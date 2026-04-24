@@ -1,9 +1,18 @@
+import {
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+} from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import axios from 'axios';
 import cors from 'cors';
 import express, { NextFunction, Request, Response } from 'express';
 import 'express-async-errors';
 import morgan from 'morgan';
-import { BASE_URL, PORT } from './constants';
+import { v4 as uuid } from 'uuid';
+import { BASE_URL, PORT, S3_BUCKET } from './constants';
+import { ensureBucketExists } from './functions';
+import { s3 } from './s3.config';
 import { setupSwagger } from './swagger.config';
 
 //#region App Setup
@@ -22,7 +31,117 @@ setupSwagger(app, BASE_URL);
 //#endregion App Setup
 
 //#region Code here
-console.log('Hello world');
+
+/**
+ * @swagger
+ * /multipart/init:
+ *   post:
+ *    summary: Initialize a multipart upload
+ *    description: Initializes a multipart upload and returns the upload ID and key for the file to be uploaded
+ *    tags: [Multipart Upload]
+ *    requestBody:
+ *      required: true
+ *      content:
+ *        application/json:
+ *          schema:
+ *            type: object
+ *            properties:
+ *              fileName:
+ *                type: string
+ *              contentType:
+ *                type: string
+ *    responses:
+ *      '200':
+ *        description: Multipart upload initialized successfully
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                message:
+ *                  type: string
+ *                uploadId:
+ *                  type: string
+ *                key:
+ *                  type: string
+ */
+app.post('/multipart/init', async (req, res) => {
+  const { fileName, contentType } = req.body;
+
+  try {
+    await ensureBucketExists(S3_BUCKET);
+
+    const Key = `uploads/${uuid()}-${fileName}`;
+
+    const cmd = new CreateMultipartUploadCommand({
+      Bucket: S3_BUCKET,
+      Key,
+      ContentType: contentType,
+    });
+
+    const out = await s3.send(cmd);
+
+    res.json({
+      message: 'Multipart upload initialized successfully',
+      uploadId: out.UploadId,
+      key: Key,
+    });
+  } catch (e: any) {
+    console.error('Error initializing multipart upload:', e.message);
+    res.status(500).json({
+      message: 'Failed to initialize multipart upload',
+    });
+  }
+});
+
+app.post('/multipart/sign', async (req, res) => {
+  const { key, uploadId, parts } = req.body;
+
+  if (!key || !uploadId || !parts) {
+    return res.status(400).json({
+      error: 'Missing required fields',
+      received: req.body,
+    });
+  }
+
+  const urls = [];
+
+  for (let partNumber = 1; partNumber <= parts; partNumber++) {
+    const cmd = new UploadPartCommand({
+      Bucket: process.env.S3_BUCKET!,
+      Key: key, // must be defined
+      UploadId: uploadId,
+      PartNumber: partNumber,
+    });
+
+    const url = await getSignedUrl(s3, cmd, { expiresIn: 900 });
+    urls.push({ partNumber, url });
+  }
+
+  res.json({ urls });
+});
+
+app.post('/multipart/complete', async (req, res) => {
+  const { key, uploadId, parts } = req.body as {
+    key: string;
+    uploadId: string;
+    parts: { ETag: string; PartNumber: number }[];
+  };
+
+  const cmd = new CompleteMultipartUploadCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+    MultipartUpload: {
+      Parts: parts.sort((a, b) => a.PartNumber - b.PartNumber),
+    },
+  });
+
+  const out = await s3.send(cmd);
+
+  res.json({ location: out.Location });
+});
+
 //#endregion
 
 //#region Server Setup
