@@ -7,10 +7,9 @@ export function setupSwagger(app: Express, url: string) {
     swaggerDefinition: {
       openapi: '3.0.0',
       info: {
-        title: 'Typescript SFA',
+        title: 'AWS S3 Multipart',
         version: '1.0.1',
-        description:
-          'This is a single file typescript template app for faster idea testing and prototyping. It contains tests, one demo root API call, basic async error handling, one demo axios call and .env support.',
+        description: 'API documentation for AWS S3 Multipart upload service.',
         contact: {
           name: 'Orji Michael',
           email: 'orjimichael4886@gmail.com',
