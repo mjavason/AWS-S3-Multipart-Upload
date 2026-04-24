@@ -108,13 +108,13 @@ app.post('/multipart/sign', async (req, res) => {
 
   for (let partNumber = 1; partNumber <= parts; partNumber++) {
     const cmd = new UploadPartCommand({
-      Bucket: process.env.S3_BUCKET!,
+      Bucket: S3_BUCKET,
       Key: key, // must be defined
       UploadId: uploadId,
       PartNumber: partNumber,
     });
 
-    const url = await getSignedUrl(s3, cmd, { expiresIn: 900 });
+    const url = await getSignedUrl(s3, cmd, { expiresIn: 60 * 60 * 2 }); // URL valid for 2 hours
     urls.push({ partNumber, url });
   }
 

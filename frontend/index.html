@@ -1,109 +1,137 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <title>S3 Multipart Test</title>
+  <meta charset="UTF-8" />
+  <title>S3 Multipart Test</title>
+  <style>
+    #progressContainer {
+      width: 300px;
+      height: 20px;
+      border: 1px solid #000;
+      margin-top: 10px;
+    }
+
+    #progressBar {
+      height: 100%;
+      width: 0%;
+      background: green;
+      transition: width 0.2s ease;
+    }
+  </style>
 </head>
 
 <body>
-    <input type="file" id="fileInput" />
-    <button id="uploadBtn">Upload</button>
-    <pre id="log"></pre>
+  <input type="file" id="fileInput" />
+  <button id="uploadBtn">Upload</button>
 
-    <script type="module">
-        const API_BASE = "http://localhost:5000"; // your express API
+  <div id="progressContainer">
+    <div id="progressBar"></div>
+  </div>
 
-        const logEl = document.getElementById("log");
-        const log = (msg) => {
-            logEl.textContent += msg + "\n";
-        };
+  <pre id="log"></pre>
 
-        document.getElementById("uploadBtn").onclick = async () => {
-            const input = document.getElementById("fileInput");
-            const file = input.files[0];
-            if (!file) return;
+  <script type="module">
+    const API_BASE = "http://localhost:5000";
 
-            log("init multipart");
+    const logEl = document.getElementById("log");
+    const progressBar = document.getElementById("progressBar");
 
-            // 1. INIT
-            const initRes = await fetch(API_BASE + "/multipart/init", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    fileName: file.name,
-                    contentType: file.type
-                })
-            });
+    const log = (msg) => {
+      logEl.textContent += msg + "\n";
+    };
 
-            const { uploadId, key } = await initRes.json();
+    const setProgress = (percent) => {
+      progressBar.style.width = percent + "%";
+    };
 
-            const PART_SIZE = 5 * 1024 * 1024;
-            const totalParts = Math.ceil(file.size / PART_SIZE);
+    document.getElementById("uploadBtn").onclick = async () => {
+      const input = document.getElementById("fileInput");
+      const file = input.files[0];
+      if (!file) return;
 
-            log(`parts: ${totalParts}`);
+      log("init multipart");
 
-            // 2. SIGN URLS
-            const signRes = await fetch(API_BASE + "/multipart/sign", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    key,
-                    uploadId,
-                    parts: totalParts
-                })
-            });
+      const initRes = await fetch(API_BASE + "/multipart/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type
+        })
+      });
 
-            const { urls } = await signRes.json();
+      const { uploadId, key } = await initRes.json();
 
-            // 3. UPLOAD PARTS (parallel)
-            const uploadedParts = [];
+      const PART_SIZE = 5 * 1024 * 1024;
+      const totalParts = Math.ceil(file.size / PART_SIZE);
 
-            await Promise.all(
-                urls.map(async ({ partNumber, url }) => {
-                    const start = (partNumber - 1) * PART_SIZE;
-                    const end = Math.min(start + PART_SIZE, file.size);
-                    const blob = file.slice(start, end);
+      log(`parts: ${totalParts}`);
 
-                    const res = await fetch(url, {
-                        method: "PUT",
-                        body: blob
-                    });
+      const signRes = await fetch(API_BASE + "/multipart/sign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key,
+          uploadId,
+          parts: totalParts
+        })
+      });
 
-                    if (!res.ok) {
-                        throw new Error(`Part ${partNumber} failed`);
-                    }
+      const { urls } = await signRes.json();
 
-                    const etag = res.headers.get("ETag");
+      const uploadedParts = [];
+      let completedParts = 0;
 
-                    uploadedParts.push({
-                        ETag: etag,
-                        PartNumber: partNumber
-                    });
+      await Promise.all(
+        urls.map(async ({ partNumber, url }) => {
+          const start = (partNumber - 1) * PART_SIZE;
+          const end = Math.min(start + PART_SIZE, file.size);
+          const blob = file.slice(start, end);
 
-                    log(`uploaded part ${partNumber}`);
-                })
-            );
+          const res = await fetch(url, {
+            method: "PUT",
+            body: blob
+          });
 
-            // 4. COMPLETE
-            log("completing upload");
+          if (!res.ok) {
+            throw new Error(`Part ${partNumber} failed`);
+          }
 
-            const completeRes = await fetch(API_BASE + "/multipart/complete", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    key,
-                    uploadId,
-                    parts: uploadedParts
-                })
-            });
+          const etag = res.headers.get("ETag");
 
-            const result = await completeRes.json();
+          uploadedParts.push({
+            ETag: etag,
+            PartNumber: partNumber
+          });
 
-            log("done:");
-            log(JSON.stringify(result, null, 2));
-        };
-    </script>
+          completedParts++;
+
+          const percent = Math.round((completedParts / totalParts) * 100);
+          setProgress(percent);
+
+          log(`uploaded part ${partNumber} (${percent}%)`);
+        })
+      );
+
+      log("completing upload");
+
+      const completeRes = await fetch(API_BASE + "/multipart/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key,
+          uploadId,
+          parts: uploadedParts
+        })
+      });
+
+      const result = await completeRes.json();
+
+      setProgress(100);
+
+      log("done:");
+      log(JSON.stringify(result, null, 2));
+    };
+  </script>
 </body>
-
 </html>
