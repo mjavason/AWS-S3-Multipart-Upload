@@ -1,6 +1,6 @@
 # AWS-S3-Multipart-Upload
 
-Simple demonstration of S3's multipart upload and resumption functionality.
+Simple demonstration of S3's multipart upload functionality.
 
 **Prerequisites**
 
