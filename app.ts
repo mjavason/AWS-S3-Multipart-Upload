@@ -94,6 +94,44 @@ app.post('/multipart/init', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /multipart/sign:
+ *   post:
+ *     summary: Get signed URLs for multipart upload
+ *     description: Returns signed URLs for each part of a multipart upload
+ *     tags: [Multipart Upload]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               key:
+ *                 type: string
+ *               uploadId:
+ *                 type: string
+ *               parts:
+ *                 type: integer
+ *     responses:
+ *       '200':
+ *         description: Signed URLs generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 urls:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       partNumber:
+ *                         type: integer
+ *                       url:
+ *                         type: string
+ */
 app.post('/multipart/sign', async (req, res) => {
   const { key, uploadId, parts } = req.body;
 
@@ -121,6 +159,44 @@ app.post('/multipart/sign', async (req, res) => {
   res.json({ urls });
 });
 
+/**
+ * @swagger
+ * /multipart/complete:
+ *   post:
+ *     summary: Complete a multipart upload
+ *     description: Completes a multipart upload by assembling previously uploaded parts
+ *     tags: [Multipart Upload]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               key:
+ *                 type: string
+ *               uploadId:
+ *                 type: string
+ *               parts:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     ETag:
+ *                       type: string
+ *                     PartNumber:
+ *                       type: integer
+ *     responses:
+ *       '200':
+ *         description: Multipart upload completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 location:
+ *                   type: string
+ */
 app.post('/multipart/complete', async (req, res) => {
   const { key, uploadId, parts } = req.body as {
     key: string;
